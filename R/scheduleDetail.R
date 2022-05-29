@@ -7,8 +7,9 @@
 #'
 #' @examples
 #' schedule_read()
-schedule_read <- function(file_name = "data-raw/生产订单排产信息表.xlsx",
-                          token ='9B6F803F-9D37-41A2-BDA0-70A7179AF0F3'
+schedule_read <- function(
+                          token ='9B6F803F-9D37-41A2-BDA0-70A7179AF0F3',
+                          file_name = "data-raw/生产订单排产信息表.xlsx"
                           ) {
   data <- readxl::read_excel(file_name)
   col_fixed = names(data)[1:13]
@@ -132,40 +133,66 @@ where  FPlanDate >='",FStartPlanDate,"' and FPlanDate <='",FEndPlanDate,"'",sql_
 }
 
 
-#' 生产订单排程信息
+#' 编码影响的查询函数
 #'
+#' @param input 输入
+#' @param output 输出
+#' @param session 会话
 #' @param token 口令
-#' @param FPrdNumber_start 产品编码从
-#' @param FPrdNumber_end 产品编码到
-#' @param FMoNumber 订单编码
 #'
 #' @return 返回值
 #' @export
 #'
 #' @examples
-#' schedule_query_stat()
-schedule_query_stat <- function(token ='9B6F803F-9D37-41A2-BDA0-70A7179AF0F3',
-                                FPrdNumber_start ='801203-99',
-                                FPrdNumber_end ='801203-99',
-                                FMoNumber ='MO202204665'
+#' scheduleDetailServer()
+scheduleDetailServer <- function(input,output,session,token) {
+
+  #查询按纽
+  var_dtscheduleDetail_dates <- tsui::var_dateRange('dtscheduleDetail_dates')
+  var_txtscheduleDetail_FPrdNumber_start <- tsui::var_text('txtscheduleDetail_FPrdNumber_start')
+  var_txtscheduleDetail_FPrdNumber_end <- tsui::var_text('txtscheduleDetail_FPrdNumber_end')
+  var_txtscheduleDetail_FMoNumber_start <- tsui::var_text('txtscheduleDetail_FMoNumber_start')
+  var_txtscheduleDetail_FMoNumber_end <- tsui::var_text('txtscheduleDetail_FMoNumber_end')
+  var_txtscheduleDetail_FMachineNumber_start <- tsui::var_text('txtscheduleDetail_FMachineNumber_start')
+  var_txtscheduleDetail_FMachineNumber_end <- tsui::var_text('txtscheduleDetail_FMachineNumber_end')
+
+  shiny::observeEvent(input$btnscheduleDetail_query,{
+    dates = var_dtscheduleDetail_dates()
+    FStartPlanDate = dates[1]
+    FEndPlanDate = dates[2]
+    FPrdNumber_start = var_txtscheduleDetail_FPrdNumber_start()
+    FPrdNumber_end = var_txtscheduleDetail_FPrdNumber_end()
+    FMoNumber_start = var_txtscheduleDetail_FMoNumber_start()
+    FMoNumber_end = var_txtscheduleDetail_FMoNumber_end()
+    FMachineNumber_start = var_txtscheduleDetail_FMachineNumber_start()
+    FMachineNumber_end = var_txtscheduleDetail_FMachineNumber_end()
 
 
+    data = schedule_query_detail(token = token,
+                                 FStartPlanDate = FStartPlanDate,
+                                 FEndPlanDate = FEndPlanDate,
+                                 FPrdNumber_start = FPrdNumber_start,
+                                 FPrdNumber_end =FPrdNumber_end,
+                                 FMoNumber_start =  FMoNumber_start,
+                                 FMoNumber_end = FMoNumber_end,
+                                 FMachineNumber_start = FMachineNumber_start,
+                                 FMachineNumber_end = FMachineNumber_end
+                                 )
+    tsui::run_dataTable2(id = 'dataviewscheduleDetail_query',data = data)
 
-                                ) {
-sql_FMoNumber <- tsdo::where_condition(key = 'FMoNumber',value =FMoNumber,operator = '=' )
-sql <- paste0("SELECT [FMoNumber] as 生产订单编号
-,FPrdNumber as 产品代码
-,FPrdName as 产品名称
-,FPackSpec as 包装规格
-      ,fstartPlanDate   as  排产开始日期
-      ,[FEndPlanDate]   as 排产结束日期
-      ,[FTotalPlanQty]    as 总排产量
-      ,[FPlanCount]    as 排产次数
-      ,[FAvgPlanQty]   as 日均排产量
-  FROM [dbo].[rds_mfg_moSchedule_stat]
-  where FPrdNumber >='",FPrdNumber_start,"' and FPrdNumber <='",FPrdNumber_end,"'",sql_FMoNumber)
-conn = tsda::sql_getConn(token = token)
-data = tsda::sql_select(conn,sql)
-return(data)
+    tsui::run_download_xlsx(id = 'btnscheduleDetail_dl',data = data,filename = tsui::file_name('生产订单排产信息表'))
+
+
+  })
+  #上传明细数据
+  var_filescheduleDetail_upload <- tsui::var_file('filescheduleDetail_upload')
+  shiny::observeEvent(input$btnscheduleDetail_upload,{
+    file_name = var_filescheduleDetail_upload()
+    tsui::file_upload(token=token,file_name = file_name,f = schedule_read,dv_id = 'dataviewscheduleDetail_query')
+
+  })
 
 }
+
+
+
