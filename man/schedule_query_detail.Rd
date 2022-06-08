@@ -13,7 +13,12 @@ schedule_query_detail(
   FMoNumber_start = "MO202204499",
   FMoNumber_end = "MO202204499",
   FMachineNumber_start = "4#",
-  FMachineNumber_end = "4#"
+  FMachineNumber_end = "4#",
+  FCompanyName = "苏州赛普生物技术有限公司",
+  FWorkShop = "总部生产部",
+  FRouteName = "",
+  FPrdSeries = "",
+  group = FALSE
 )
 }
 \arguments{

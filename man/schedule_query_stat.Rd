@@ -8,7 +8,11 @@ schedule_query_stat(
   token = "9B6F803F-9D37-41A2-BDA0-70A7179AF0F3",
   FPrdNumber_start = "801203-99",
   FPrdNumber_end = "801203-99",
-  FMoNumber = "MO202204665"
+  FMoNumber = "MO202204665",
+  FCompanyName = "苏州赛普生物技术有限公司",
+  FWorkShop = "总部生产部",
+  FRouteName = "",
+  FPrdSeries = ""
 )
 }
 \arguments{
@@ -19,6 +23,14 @@ schedule_query_stat(
 \item{FPrdNumber_end}{产品编码到}
 
 \item{FMoNumber}{订单编码}
+
+\item{FCompanyName}{公司}
+
+\item{FWorkShop}{生产车间}
+
+\item{FRouteName}{工序}
+
+\item{FPrdSeries}{产品系列}
 }
 \value{
 返回值

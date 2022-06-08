@@ -1,6 +1,8 @@
 #' 读取生产模板数据
 #'
 #' @param file_name 文件名
+#' @param group 是否集团与多组织
+#' @param token  口令
 #'
 #' @return 返回值
 #' @export
@@ -9,16 +11,42 @@
 #' schedule_read()
 schedule_read <- function(
                           token ='9B6F803F-9D37-41A2-BDA0-70A7179AF0F3',
-                          file_name = "data-raw/生产订单排产信息表.xlsx"
+                          file_name = "data-raw/生产订单排产信息表.xlsx",
+                          group = FALSE
                           ) {
+
+  #设置参数
+  if(group){
+    #启用多组织
+    ncount_fixed = 13+4
+    col_name1 = c('FCompanyName','FWorkShop','FRouteName','FPrdSeries','FMachineNumber','FPrdNumber', 'FPrdName', 'FMoldNumber', 'FPackSpec', 'FMoNumber', 'FMoStatus', 'FMoNote' ,'FMoQty' ,'FFinishQty', 'FStockInQty', 'FUnScheduleQty' ,'FScheduledQty' ,'FPlanDate', 'FPlanQty')
+    col_name2 = c('FInterId','FSeq','FCompanyName','FWorkShop','FRouteName','FPrdSeries','FMachineNumber','FPrdNumber', 'FPrdName', 'FMoldNumber', 'FPackSpec', 'FMoNumber', 'FMoStatus', 'FMoNote' ,'FMoQty' ,'FFinishQty', 'FStockInQty', 'FUnScheduleQty' ,'FScheduledQty' ,'FPlanDate', 'FPlanQty')
+    table_name ='rds_mfg_moScheduleGroup'
+    table_name_del ='rds_mfg_moScheduleGroupDel'
+    table_name_input ='rds_mfg_moScheduleGroupInput'
+    }else{
+    #默认状态，未启用
+    ncount_fixed = 13
+    col_name1 = c('FMachineNumber','FPrdNumber', 'FPrdName', 'FMoldNumber', 'FPackSpec', 'FMoNumber', 'FMoStatus', 'FMoNote' ,'FMoQty' ,'FFinishQty', 'FStockInQty', 'FUnScheduleQty' ,'FScheduledQty' ,'FPlanDate', 'FPlanQty')
+    col_name2 = c('FInterId','FSeq','FMachineNumber','FPrdNumber', 'FPrdName', 'FMoldNumber', 'FPackSpec', 'FMoNumber', 'FMoStatus', 'FMoNote' ,'FMoQty' ,'FFinishQty', 'FStockInQty', 'FUnScheduleQty' ,'FScheduledQty' ,'FPlanDate', 'FPlanQty')
+    table_name ='rds_mfg_moSchedule'
+    table_name_del ='rds_mfg_moScheduleDel'
+    table_name_input ='rds_mfg_moScheduleInput'
+    }
   data <- readxl::read_excel(file_name)
-  col_fixed = names(data)[1:13]
+  col_fixed = names(data)[1:ncount_fixed]
   ncount = nrow(data)
   if (ncount >0){
     data = reshape2::melt(data = data,id.vars=col_fixed,variable.name='FPlanDate',value.name='FPlanQty',factorsAsStrings = TRUE)
     data$FPlanDate <- tsdo::excel_date(as.integer(as.character(data$FPlanDate)))
     data = data[complete.cases(data$产品代码), ]
     data = data[complete.cases(data$生产订单编号), ]
+    if(group){
+      data$公司 <- tsdo::na_replace(data$公司,'')
+      data$生产车间 <- tsdo::na_replace(data$生产车间,'')
+      data$工序 <- tsdo::na_replace(data$工序,'')
+      data$产品系列 <- tsdo::na_replace(data$产品系列,'')
+    }
     data$产品名称 <- tsdo::na_replace(data$产品名称,'')
     data$模具编码 <- tsdo::na_replace(data$模具编码,'')
     data$包装规格 <- tsdo::na_replace(data$包装规格,'')
@@ -31,39 +59,23 @@ schedule_read <- function(
     data$已排产数量 <- tsdo::na_replace(data$已排产数量,0)
     data$FPlanQty <- tsdo::na_replace(data$FPlanQty,0)
     data = data[data$FPlanQty>0, ]
-    names(data) <- c('FMachineNumber','FPrdNumber', 'FPrdName', 'FMoldNumber', 'FPackSpec', 'FMoNumber', 'FMoStatus', 'FMoNote' ,'FMoQty' ,'FFinishQty', 'FStockInQty', 'FUnScheduleQty' ,'FScheduledQty' ,'FPlanDate', 'FPlanQty')
+    names(data) <- col_name1
     conn = tsda::sql_getConn(token = token)
 
     ncount = nrow(data)
     data$FSeq = 1:ncount
     max_id = tsda::db_maxId2(token = token,FTableName = 'rds_mfg_moSchedule')
     data$FInterId = data$FSeq + max_id
-    col_name2 = c('FInterId','FSeq','FMachineNumber','FPrdNumber', 'FPrdName', 'FMoldNumber', 'FPackSpec', 'FMoNumber', 'FMoStatus', 'FMoNote' ,'FMoQty' ,'FFinishQty', 'FStockInQty', 'FUnScheduleQty' ,'FScheduledQty' ,'FPlanDate', 'FPlanQty')
     data = data[ ,col_name2]
-    #推入临时表
-    tsda::db_writeTable(conn = conn,table_name = 'rds_mfg_moScheduleInput',r_object = data,append = T)
-    #备份数据
-    sql_bak <- paste0("insert into rds_mfg_moScheduleDel
-select a.*  from rds_mfg_moSchedule a
-inner join   rds_mfg_moScheduleInput b
-on a.FMoNumber =  b.FMoNumber and a.FPlanDate = b.FPlanDate")
-    tsda::sql_update(conn,sql_bak)
-    #更新内码
-    sql_upd <- paste0("update b set  b.FInterId = a.FInterId  from rds_mfg_moSchedule a
-inner join   rds_mfg_moScheduleInput b
-on a.FMoNumber =  b.FMoNumber and a.FPlanDate = b.FPlanDate")
-    tsda::sql_update(conn,sql_upd)
-    #删除数据
-    sql_del <- paste0("delete a   from rds_mfg_moSchedule a
-inner join   rds_mfg_moScheduleInput b
-on a.FMoNumber =  b.FMoNumber and a.FPlanDate = b.FPlanDate")
-    tsda::sql_update(conn,sql_del)
-    #插入数据
-    sql_ins <- paste0("insert into rds_mfg_moSchedule select * from rds_mfg_moScheduleInput ")
-    tsda::sql_update(conn,sql_ins)
-    #清空数据
-    tsda::db_truncateTable(token = token,table_name = 'rds_mfg_moScheduleInput')
-    #写入正式表
+    tsda::sql_pushData_InputDel(token = token,
+                                data = data,
+                                table_name = table_name,
+                                table_name_input = table_name_input,
+                                table_name_del = table_name_del,
+                                keys = c('FMoNumber','FPlanDate') ,
+                                FInterId = 'FInterId')
+
+
 
 
   }
@@ -71,6 +83,47 @@ on a.FMoNumber =  b.FMoNumber and a.FPlanDate = b.FPlanDate")
 
 
 }
+
+#' 读取数据
+#'
+#' @param token  口令
+#' @param file_name 文件名
+#'
+#' @return 返回值
+#' @export
+#'
+#' @examples
+#' schedule_read_single()
+schedule_read_single <- function(
+  token ='9B6F803F-9D37-41A2-BDA0-70A7179AF0F3',
+  file_name = "data-raw/生产订单排产信息表.xlsx") {
+
+  res <- schedule_read(token = token,file_name = file_name,group = FALSE)
+  return(res)
+
+}
+
+#' 读取数据
+#'
+#' @param token  口令
+#' @param file_name 文件名
+#'
+#' @return 返回值
+#' @export
+#'
+#' @examples
+#' schedule_read_group()
+schedule_read_group <- function(
+  token ='9B6F803F-9D37-41A2-BDA0-70A7179AF0F3',
+  file_name = "data-raw/生产订单排产信息表.xlsx"
+
+) {
+
+  res <- schedule_read(token = token,file_name = file_name,group = TRUE)
+  return(res)
+
+}
+
 
 
 
@@ -99,7 +152,12 @@ schedule_query_detail <- function(token ='9B6F803F-9D37-41A2-BDA0-70A7179AF0F3',
                            FMoNumber_start ='MO202204499',
                            FMoNumber_end ='MO202204499',
                            FMachineNumber_start ='4#',
-                           FMachineNumber_end ='4#'
+                           FMachineNumber_end ='4#',
+                           FCompanyName ='苏州赛普生物技术有限公司',
+                           FWorkShop ='总部生产部',
+                           FRouteName ='',
+                           FPrdSeries ='',
+                           group=FALSE
                            ) {
 sql_FPrdNumber_start <- tsdo::where_condition(key = 'FPrdNumber',value =FPrdNumber_start,operator = '>=' )
 sql_FPrdNumber_end <- tsdo::where_condition(key = 'FPrdNumber',value =FPrdNumber_end,operator = '<=' )
@@ -107,8 +165,36 @@ sql_FMoNumber_start <- tsdo::where_condition(key = 'FMoNumber',value=FMoNumber_s
 sql_FMoNumber_end <- tsdo::where_condition(key = 'FMoNumber',value=FMoNumber_end,operator = '<=')
 sql_FMachineNumber_start <- tsdo::where_condition(key = 'FMachineNumber',value=FMachineNumber_start,operator = '>=')
 sql_FMachineNumber_end <- tsdo::where_condition(key = 'FMachineNumber',value=FMachineNumber_end,operator = '<=')
+sql_FCompanyName <- tsdo::where_condition(key = 'FCompanyName',value=FCompanyName,operator = '=')
+sql_FWorkShop <- tsdo::where_condition(key = 'FWorkShop',value=FWorkShop,operator = '=')
+sql_FRouteName <- tsdo::where_condition(key = 'FRouteName',value=FRouteName,operator = '=')
+sql_FPrdSeries <- tsdo::where_condition(key = 'FPrdSeries',value=FPrdSeries,operator = '=')
 
-sql <- paste0("SELECT
+if(group){
+  sql <- paste0("SELECT
+      [FCompanyName] as 公司
+      ,[FWorkShop] as 生产车间
+      ,[FRouteName] as 工序
+      ,[FPrdSeries]  as 产品系列
+      ,[FMachineNumber] as 机台编号
+      ,[FPrdNumber] as 产品代码
+      ,[FPrdName] as 产品名称
+      ,[FMoldNumber] as 模具编码
+      ,[FPackSpec] as 包装规格
+      ,[FMoNumber] as 生产订单编号
+      ,[FMoStatus] as 工单状态
+      ,[FMoNote] as 工单备注
+      ,[FMoQty] as 工单数量
+      ,[FFinishQty] as 产线完成数量
+      ,[FStockInQty] as 系统入库
+      ,[FUnScheduleQty] as 未排产数量
+      ,[FScheduledQty] as 已排产数量
+      ,[FPlanDate] as 排产日期
+      ,[FPlanQty] as 计划产量
+  FROM [dbo].[rds_mfg_moScheduleGroup]
+  where  FPlanDate >='",FStartPlanDate,"' and FPlanDate <='",FEndPlanDate,"'",sql_FPrdNumber_start,sql_FPrdNumber_end,sql_FMoNumber_start,sql_FMoNumber_end,sql_FMachineNumber_start,sql_FMachineNumber_end,sql_FCompanyName,sql_FWorkShop,sql_FRouteName,sql_FPrdSeries)
+}else{
+  sql <- paste0("SELECT
       [FMachineNumber] as 机台编号
       ,[FPrdNumber] as 产品代码
       ,[FPrdName] as 产品名称
@@ -126,7 +212,9 @@ sql <- paste0("SELECT
       ,[FPlanQty] as 计划产量
   FROM [dbo].[rds_mfg_moSchedule]
 where  FPlanDate >='",FStartPlanDate,"' and FPlanDate <='",FEndPlanDate,"'",sql_FPrdNumber_start,sql_FPrdNumber_end,sql_FMoNumber_start,sql_FMoNumber_end,sql_FMachineNumber_start,sql_FMachineNumber_end)
- # print(sql)
+}
+
+  print(sql)
   conn = tsda::sql_getConn(token = token)
   data = tsda::sql_select(conn,sql)
   return(data)
@@ -153,6 +241,16 @@ scheduleDetailServer <- function(input,output,session,token) {
   var_txtscheduleDetail_FPrdNumber_end <- tsui::var_text('txtscheduleDetail_FPrdNumber_end')
   var_txtscheduleDetail_FMoNumber_start <- tsui::var_text('txtscheduleDetail_FMoNumber_start')
   var_txtscheduleDetail_FMoNumber_end <- tsui::var_text('txtscheduleDetail_FMoNumber_end')
+
+  var_txtscheduleDetail_FCompanyName <- tsui::var_text('txtscheduleDetail_FCompanyName')
+  var_txtscheduleDetail_FWorkShop <- tsui::var_text('txtscheduleDetail_FWorkShop')
+
+  var_txtscheduleDetail_FRouteName <- tsui::var_text('txtscheduleDetail_FRouteName')
+  var_txtscheduleDetail_FPrdSeries <- tsui::var_text('txtscheduleDetail_FPrdSeries')
+
+
+
+
   var_txtscheduleDetail_FMachineNumber_start <- tsui::var_text('txtscheduleDetail_FMachineNumber_start')
   var_txtscheduleDetail_FMachineNumber_end <- tsui::var_text('txtscheduleDetail_FMachineNumber_end')
 
@@ -166,6 +264,11 @@ scheduleDetailServer <- function(input,output,session,token) {
     FMoNumber_end = var_txtscheduleDetail_FMoNumber_end()
     FMachineNumber_start = var_txtscheduleDetail_FMachineNumber_start()
     FMachineNumber_end = var_txtscheduleDetail_FMachineNumber_end()
+    #集团公司新增内容
+    FCompanyName = var_txtscheduleDetail_FCompanyName()
+    FWorkShop =  var_txtscheduleDetail_FWorkShop()
+    FRouteName = var_txtscheduleDetail_FRouteName()
+    FPrdSeries = var_txtscheduleDetail_FPrdSeries()
 
 
     data = schedule_query_detail(token = token,
@@ -176,7 +279,12 @@ scheduleDetailServer <- function(input,output,session,token) {
                                  FMoNumber_start =  FMoNumber_start,
                                  FMoNumber_end = FMoNumber_end,
                                  FMachineNumber_start = FMachineNumber_start,
-                                 FMachineNumber_end = FMachineNumber_end
+                                 FMachineNumber_end = FMachineNumber_end,
+                                 FCompanyName =FCompanyName,
+                                 FWorkShop =FWorkShop,
+                                 FRouteName =FRouteName,
+                                 FPrdSeries =FPrdSeries,
+                                 group = TRUE
                                  )
     tsui::run_dataTable2(id = 'dataviewscheduleDetail_query',data = data)
 
@@ -188,7 +296,7 @@ scheduleDetailServer <- function(input,output,session,token) {
   var_filescheduleDetail_upload <- tsui::var_file('filescheduleDetail_upload')
   shiny::observeEvent(input$btnscheduleDetail_upload,{
     file_name = var_filescheduleDetail_upload()
-    tsui::file_upload(token=token,file_name = file_name,f = schedule_read,dv_id = 'dataviewscheduleDetail_query')
+    tsui::file_upload(token=token,file_name = file_name,f = schedule_read_group,dv_id = 'dataviewscheduleDetail_query')
 
   })
 
