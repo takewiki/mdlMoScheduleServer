@@ -11,16 +11,16 @@
 #' schedule_read()
 schedule_read <- function(
                           token ='9B6F803F-9D37-41A2-BDA0-70A7179AF0F3',
-                          file_name = "data-raw/生产订单排产信息表.xlsx",
+                          file_name = "data-raw/生产订单排产信息表模板_0823.xlsx",
                           group = FALSE
                           ) {
 
   #设置参数
   if(group){
     #启用多组织
-    ncount_fixed = 13+4
-    col_name1 = c('FCompanyName','FWorkShop','FRouteName','FPrdSeries','FMachineNumber','FPrdNumber', 'FPrdName', 'FMoldNumber', 'FPackSpec', 'FMoNumber', 'FMoStatus', 'FMoNote' ,'FMoQty' ,'FFinishQty', 'FStockInQty', 'FUnScheduleQty' ,'FScheduledQty' ,'FPlanDate', 'FPlanQty')
-    col_name2 = c('FInterId','FSeq','FCompanyName','FWorkShop','FRouteName','FPrdSeries','FMachineNumber','FPrdNumber', 'FPrdName', 'FMoldNumber', 'FPackSpec', 'FMoNumber', 'FMoStatus', 'FMoNote' ,'FMoQty' ,'FFinishQty', 'FStockInQty', 'FUnScheduleQty' ,'FScheduledQty' ,'FPlanDate', 'FPlanQty')
+    ncount_fixed = 21
+    col_name1 = c('FCompanyName','FWorkShop','FRouteName','FPrdSeries','FMachineNumber','FPrdNumber', 'FPrdName', 'FMoldNumber','FHoleCount', 'FPackSpec','FPrdUnit', 'FMoNumber', 'FMoQty','FPcsQtyPerPkg','FPkgQty','FMoNote','FMoStatus' ,'FFinishQty', 'FStockInQty', 'FUnScheduleQty' ,'FScheduledQty' ,'FPlanDate', 'FPlanQty')
+    col_name2 = c('FInterId','FSeq','FCompanyName','FWorkShop','FRouteName','FPrdSeries','FMachineNumber','FPrdNumber', 'FPrdName', 'FMoldNumber','FHoleCount', 'FPackSpec','FPrdUnit', 'FMoNumber', 'FMoQty','FPcsQtyPerPkg','FPkgQty','FMoNote','FMoStatus' ,'FFinishQty', 'FStockInQty', 'FUnScheduleQty' ,'FScheduledQty' ,'FPlanDate', 'FPlanQty')
     table_name ='rds_mfg_moScheduleGroup'
     table_name_del ='rds_mfg_moScheduleGroupDel'
     table_name_input ='rds_mfg_moScheduleGroupInput'
@@ -39,8 +39,14 @@ schedule_read <- function(
   if (ncount >0){
     data = reshape2::melt(data = data,id.vars=col_fixed,variable.name='FPlanDate',value.name='FPlanQty',factorsAsStrings = TRUE)
     data$FPlanDate <- tsdo::excel_date(as.integer(as.character(data$FPlanDate)))
+
     data = data[complete.cases(data$产品代码), ]
     data = data[complete.cases(data$生产订单编号), ]
+    data$FPlanQty <- as.numeric(data$FPlanQty)
+    data$FPlanQty <- tsdo::na_replace(data$FPlanQty,0)
+    data = data[data$FPlanQty>0, ]
+    # print(1)
+    # View(data)
     if(group){
       data$公司 <- tsdo::na_replace(data$公司,'')
       data$生产车间 <- tsdo::na_replace(data$生产车间,'')
@@ -49,16 +55,20 @@ schedule_read <- function(
     }
     data$产品名称 <- tsdo::na_replace(data$产品名称,'')
     data$模具编码 <- tsdo::na_replace(data$模具编码,'')
+    data$生产穴数 <- tsdo::na_replace(data$生产穴数,'')
     data$包装规格 <- tsdo::na_replace(data$包装规格,'')
     data$工单状态 <- tsdo::na_replace(data$工单状态,'')
     data$工单备注 <- tsdo::na_replace(data$工单备注,'')
     data$工单数量 <- tsdo::na_replace(data$工单数量,0)
-    data$产线完成数量 <- tsdo::na_replace(data$产线完成数量,0)
+    data$`产线完成数量（箱）` <- tsdo::na_replace(data$`产线完成数量（箱）`,0)
     data$系统入库 <- tsdo::na_replace(data$系统入库,0)
-    data$未排产数量 <- tsdo::na_replace(data$未排产数量,0)
-    data$已排产数量 <- tsdo::na_replace(data$已排产数量,0)
-    data$FPlanQty <- tsdo::na_replace(data$FPlanQty,0)
-    data = data[data$FPlanQty>0, ]
+    data$`未排产数量（箱）` <- tsdo::na_replace(data$`未排产数量（箱）`,0)
+    data$`已排产数量（箱）` <- tsdo::na_replace(data$`已排产数量（箱）`,0)
+    data$`箱数（PCS换算）` <- data$工单数量
+    data$`箱数（PCS换算）`[data$单位 == 'PCS'] <- round(data$工单数量[data$单位 == 'PCS']/data$`每箱PCS数`[data$单位 == 'PCS'],0)
+
+
+
     names(data) <- col_name1
     conn = tsda::sql_getConn(token = token)
 
@@ -67,6 +77,9 @@ schedule_read <- function(
     max_id = tsda::db_maxId2(token = token,FTableName = 'rds_mfg_moSchedule')
     data$FInterId = data$FSeq + max_id
     data = data[ ,col_name2]
+    # print(2)
+    # print(head(data))
+    # print(str(data))
     tsda::sql_pushData_InputDel(token = token,
                                 data = data,
                                 table_name = table_name,
